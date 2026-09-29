@@ -27,6 +27,19 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Restore monitor state
+        shell: bash
+        run: |
+          mkdir -p data
+
+          if git ls-remote --exit-code --heads origin monitor-state > /dev/null 2>&1; then
+            git fetch origin monitor-state
+            git show origin/monitor-state:data/cdac_jobs.sqlite3 > data/cdac_jobs.sqlite3
+            echo "Restored existing monitor state."
+          else
+            echo "No monitor state found."
+          fi
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -39,3 +52,35 @@ jobs:
           PYTHONPATH: src
         run: |
           python src/main.py
+
+      - name: Save monitor state
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          rm -rf state-repo
+          mkdir state-repo
+
+          cd state-repo
+          git init
+          git remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
+
+          if git ls-remote --exit-code --heads origin monitor-state > /dev/null 2>&1; then
+            git fetch origin monitor-state
+            git checkout -b monitor-state origin/monitor-state
+          else
+            git checkout --orphan monitor-state
+          fi
+
+          mkdir -p data
+          cp ../data/cdac_jobs.sqlite3 data/cdac_jobs.sqlite3
+
+          git add -f data/cdac_jobs.sqlite3
+
+          if git diff --cached --quiet; then
+            echo "Monitor state has not changed."
+          else
+            git commit -m "Update monitor state"
+            git push origin monitor-state
+          fi
